@@ -1,7 +1,7 @@
 package com.example.csaikia.eee508androidopencv;
 
-import android.hardware.Camera;
-import android.os.Handler;
+import android.content.Intent;
+
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.MotionEvent;
@@ -11,33 +11,32 @@ import android.view.WindowManager;
 import android.view.View.OnTouchListener;
 import android.widget.TextView;
 import android.graphics.Color;
-import android.widget.Toast;
 
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
+import org.opencv.android.JavaCameraView;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.android.BaseLoaderCallback;
+
+import org.opencv.core.Point;
+
+
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
-import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 
 
 public class MainActivity extends AppCompatActivity implements OnTouchListener,CvCameraViewListener2 {
-    private static final String TAG = "EEE508OpenCV::MainActivity";
     private CameraBridgeViewBase mOpenCvCameraView;
     private Mat mRgba;
-    private Mat mGray;
 
     private Scalar mBlobColorRgba;
     private Scalar mBlobColorHsv;
-    private Mat mSpectrum;
-    private Size SPECTRUM_SIZE;
 
     double x = -1;
     double y = -1;
@@ -45,16 +44,23 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener,C
     TextView touch_coordinates;
     TextView touch_color;
 
+
+    Intent incomingLaunch;
+    Boolean lineDet;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-//        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-//        touch_coordinates = (TextView) findViewById(R.id.touch_coordinates);
-//        touch_color = (TextView) findViewById(R.id.touch_color);
-//        mOpenCvCameraView = (CustomCamera) findViewById(R.id.opencv_tutorial_activity_surface_view);
-//        mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
-//        mOpenCvCameraView.setCvCameraViewListener(this);
+
+        // Get the Flag value from Launch Screen
+        lineDet = getIntent().getExtras().getBoolean("LineDetFlag");
+
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        touch_coordinates = (TextView) findViewById(R.id.touch_coordinates);
+        touch_color = (TextView) findViewById(R.id.touch_color);
+        mOpenCvCameraView = (JavaCameraView) findViewById(R.id.opencv_tutorial_activity_surface_view);
+        mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
+        mOpenCvCameraView.setCvCameraViewListener(this);
     }
 
     @Override
@@ -100,6 +106,8 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener,C
         }
     }
 
+    // onTouch() method contains the code such that when screen is touched, it displays the color
+    // and coordinates of the point which is clicked
     @Override
     public boolean onTouch(View v, MotionEvent event) {
         int cols = mRgba.cols();
@@ -168,242 +176,85 @@ public class MainActivity extends AppCompatActivity implements OnTouchListener,C
 
     @Override
     public void onCameraViewStarted(int width, int height) {
-        /*Camera.Parameters cParams = mOpenCvCameraView.getParameters();
-        cParams.setFocusMode(Camera.Parameters.FOCUS_MODE_INFINITY);
-        mOpenCvCameraView.setParameters(cParams);
-        Toast.makeText(this, "Focus mode : "+cParams.getFocusMode(), Toast.LENGTH_SHORT).show();
 
-        mRgba = new Mat(height, width, CvType.CV_8UC4);
-        mDetector = new ColorBlobDetector();
-        mSpectrum = new Mat();
-        mBlobColorRgba = new Scalar(255);
-        mBlobColorHsv = new Scalar(255);
-        SPECTRUM_SIZE = new Size(200, 64);
-        //CONTOUR_COLOR = new Scalar(255,0,0,255);
-        //CONTOUR_COLOR_WHITE = new Scalar(255,255,255,255);
-        */
     }
 
     @Override
     public void onCameraViewStopped() {
-//        mGray.release();
         mRgba.release();
     }
 
+    /* onCameraFrame() method implements the following two features:
+        1. Straight line detection on a video frame
+        2. Edge detection on a video frame while maintaining color of image
+        */
     @Override
     public Mat onCameraFrame(CameraBridgeViewBase.CvCameraViewFrame inputFrame) {
-        // Feature to detect straight lines
-        /*mRgba=inputFrame.rgba();
-        Mat lines = new Mat();
-        int threshold = 70;
-        int minLineSize = 30;
-        int lineGap = 10;
-
-        Mat mIntermediateMat = new Mat();
-        Mat mRgbaInnerWindow = new Mat();
-
+        // Input frame is taken and stored as an RGBA matrix
         mRgba=inputFrame.rgba();
-        Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(5, 5), 1);
-        Imgproc.Canny(mRgba, mIntermediateMat, 80, 100);
+        // lineDet variable is returned from Launchscreen class depending on what the user picks
+        if(lineDet){
+            // Feature to detect straight lines
+            Mat lines = new Mat();
+            int threshold = 50;
+            int minLineSize = 20;
+            int lineGap = 20;
 
-        Imgproc.cvtColor(mIntermediateMat, mRgbaInnerWindow, Imgproc.COLOR_GRAY2BGRA, 4);
+            Mat mIntermediateMat = new Mat();
+            Mat mRgbaInnerWindow = new Mat();
 
-        Imgproc.HoughLinesP(mIntermediateMat, lines, 1, Math.PI / 180, threshold,
+            // It was noticed that the performance of line detection was more robust
+            // when Gaussian blurring was used prior to detection
+            Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(5, 5), 1);
+            // Canny edge detection is used as a preprocessing step
+            Imgproc.Canny(mRgba, mIntermediateMat, 70, 100);
+
+            Imgproc.cvtColor(mIntermediateMat, mRgbaInnerWindow, Imgproc.COLOR_GRAY2BGRA, 4);
+
+            // Hough Transform is used to detect straight lines
+            Imgproc.HoughLinesP(mIntermediateMat, lines, 1, Math.PI / 180, threshold,
                 minLineSize, lineGap);
 
-        Scalar mColors = new Scalar( 0, 255, 0, 128 );
-        for (int i = 0; i < lines.cols(); i++)
-        {
-            double[] vec = lines.get(0, i);
-            double x1 = vec[0],
-                    y1 = vec[1],
-                    x2 = vec[2],
-                    y2 = vec[3];
-            Point start = new Point(x1, y1);
-            Point end = new Point(x2, y2);
-            Imgproc.line(mRgba, start, end, mColors, 3);
-        }
-
-        */
-
-        // Feature to do edge detection in image
-
-        mRgba = inputFrame.rgba();
-
-        org.opencv.core.Size sizeRgba = mRgba.size();
-        Mat edges = new Mat(mRgba.size(), CvType.CV_8UC1);
-
-        Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(5, 5), 1);
-        Mat rgbaInnerWindow = mRgba.submat(0, (int) sizeRgba.height, 0, (int) sizeRgba.width);
-
-        Imgproc.Canny(rgbaInnerWindow, edges, 10, 100);
-
-        //copy the edgesMat back into the sub-image
-        Imgproc.cvtColor(edges, rgbaInnerWindow, Imgproc.COLOR_GRAY2BGRA, 4);
-
-        rgbaInnerWindow.release();
+            Scalar mColors = new Scalar( 0, 255, 0 );
 
 
-
-
- //       mGray=inputFrame.gray();
-// Blob detector
-        //Imgproc.blur(mRgba, mRgba, new Size(3,3));
-     /*   Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(5, 5), 1);
-        if (!mIsColorSelected) return mRgba;
-
-        if (mIsColorSelected) {
-            mDetector.process(mRgba);
-            List<MatOfPoint> contours = mDetector.getContours();
-
-            Log.d(TAG, "Contours:" + contours.size());
-            Scalar color = new Scalar(255, 0, 0, 255);
-            Imgproc.drawContours(mRgba, contours, -1, color);
-        }
-
-        if (contours.size() <= 0) {
-            return mRgba;
-        }
-
-       RotatedRect rect = Imgproc.minAreaRect(new MatOfPoint2f(contours.get(0)	.toArray()));
-
-        double boundWidth = rect.size.width;
-        double boundHeight = rect.size.height;
-        int boundPos = 0;
-
-        for (int i = 1; i < contours.size(); i++) {
-            rect = Imgproc.minAreaRect(new MatOfPoint2f(contours.get(i).toArray()));
-            if (rect.size.width * rect.size.height > boundWidth * boundHeight) {
-                boundWidth = rect.size.width;
-                boundHeight = rect.size.height;
-                boundPos = i;
+            for (int i = 0; i < lines.cols(); i++) {
+                double[] vec = lines.get(0, i);
+                if(vec==null)
+                    continue;
+                double x1 = vec[0],
+                        y1 = vec[1],
+                        x2 = vec[2],
+                        y2 = vec[3];
+                Point start = new Point(x1, y1);
+                Point end = new Point(x2, y2);
+                // Lines are plotted using the function given below
+                Imgproc.line(mRgba, start, end, mColors, 3);
             }
+        } else {
+            // Feature to do edge detection in image
+            org.opencv.core.Size sizeRgba = mRgba.size();
+            Mat edges = new Mat(mRgba.size(), CvType.CV_8UC1);
+            // It was noticed that the performance of edge detection was more robust
+            // when Gaussian blurring was used prior to detection
+            Imgproc.GaussianBlur(mRgba, mRgba, new org.opencv.core.Size(5, 5), 1);
+            Mat rgbaInnerWindow = mRgba.submat(0, (int) sizeRgba.height, 0, (int) sizeRgba.width);
+            Imgproc.Canny(rgbaInnerWindow, edges, 10, 100);
+
+            // The following changes are required so that the edge detection happens while the
+            // video frame retains color of the video frame.
+            Mat colorEdges = new Mat();
+            Mat otherEdge = colorEdges;
+            edges.copyTo(colorEdges);
+            Imgproc.cvtColor(colorEdges, colorEdges, Imgproc.COLOR_GRAY2BGRA);
+
+            colorEdges = colorEdges.setTo(new Scalar(0, 255, 0), edges);
+            colorEdges.copyTo(rgbaInnerWindow, edges);
+
+            otherEdge.release();
+            colorEdges.release();
+            rgbaInnerWindow.release();
         }
-
-/*        Rect boundRect = Imgproc.boundingRect(new MatOfPoint(contours.get(boundPos).toArray()));
-
-        Imgproc.rectangle( mRgba, boundRect.tl(), boundRect.br(), CONTOUR_COLOR_WHITE, 2, 8, 0 );
-
-/*
-        Log.d(TAG,
-                " Row start ["+
-                        (int) boundRect.tl().y + "] row end ["+
-                        (int) boundRect.br().y+"] Col start ["+
-                        (int) boundRect.tl().x+"] Col end ["+
-                        (int) boundRect.br().x+"]");
-
-        int rectHeightThresh = 0;
-        double a = boundRect.br().y - boundRect.tl().y;
-        a = a * 0.7;
-        a = boundRect.tl().y + a;
-
-        Log.d(TAG,
-                " A ["+a+"] br y - tl y = ["+(boundRect.br().y - boundRect.tl().y)+"]");
-
-        //Core.rectangle( mRgba, boundRect.tl(), boundRect.br(), CONTOUR_COLOR, 2, 8, 0 );
-        Imgproc.rectangle( mRgba, boundRect.tl(), new Point(boundRect.br().x, a), CONTOUR_COLOR, 2, 8, 0 );
-
-        MatOfPoint2f pointMat = new MatOfPoint2f();
-        Imgproc.approxPolyDP(new MatOfPoint2f(contours.get(boundPos).toArray()), pointMat, 3, true);
-        contours.set(boundPos, new MatOfPoint(pointMat.toArray()));
-/*
-        MatOfInt hull = new MatOfInt();
-        MatOfInt4 convexDefect = new MatOfInt4();
-        Imgproc.convexHull(new MatOfPoint(contours.get(boundPos).toArray()), hull);
-
-        if(hull.toArray().length < 3) return mRgba;
-
-        Imgproc.convexityDefects(new MatOfPoint(contours.get(boundPos)	.toArray()), hull, convexDefect);
-
-        List<MatOfPoint> hullPoints = new LinkedList<MatOfPoint>();
-        List<Point> listPo = new LinkedList<Point>();
-        for (int j = 0; j < hull.toList().size(); j++) {
-            listPo.add(contours.get(boundPos).toList().get(hull.toList().get(j)));
-        }
-
-        MatOfPoint e = new MatOfPoint();
-        e.fromList(listPo);
-        hullPoints.add(e);
-
-        List<MatOfPoint> defectPoints = new LinkedList<MatOfPoint>();
-        List<Point> listPoDefect = new LinkedList<Point>();
-        for (int j = 0; j < convexDefect.toList().size(); j = j+4) {
-            Point farPoint = contours.get(boundPos).toList().get(convexDefect.toList().get(j+2));
-            Integer depth = convexDefect.toList().get(j+3);
-            if(depth > iThreshold && farPoint.y < a){
-                listPoDefect.add(contours.get(boundPos).toList().get(convexDefect.toList().get(j+2)));
-            }
-            Log.d(TAG, "defects ["+j+"] " + convexDefect.toList().get(j+3));
-        }
-
-        MatOfPoint e2 = new MatOfPoint();
-        e2.fromList(listPo);
-        defectPoints.add(e2);
-
-        Log.d(TAG, "hull: " + hull.toList());
-        Log.d(TAG, "defects: " + convexDefect.toList());
-
-        Imgproc.drawContours(mRgba, hullPoints, -1, CONTOUR_COLOR, 3);
-
-        int defectsTotal = (int) convexDefect.total();
-        Log.d(TAG, "Defect total " + defectsTotal);
-
-        this.numberOfFingers = listPoDefect.size();
-        if(this.numberOfFingers > 5) this.numberOfFingers = 5;
-
-        mHandler.post(mUpdateFingerCountResults);
-
-        for(Point p : listPoDefect){
-            Imgproc.circle(mRgba, p, 6, new Scalar(255,0,255));
-        }
-
-/*Mat rgba = inputFrame.rgba();
-        org.opencv.core.Size sizeRgba = rgba.size();
-
-        int rows = (int) sizeRgba.height;
-        int cols = (int) sizeRgba.width;
-
-        int left = cols / 8;
-        int top = rows / 8;
-        int width = cols * 3 / 4;
-        int height = rows * 3 / 4;
-
-        //get sub-image
-        Mat rgbaInnerWindow = rgba.submat(top, top + height, left, left + width);
-
-        //create edgesMat from sub-image
-        Imgproc.Canny(rgbaInnerWindow, rgbaInnerWindow, 100, 100);
-        */
-
-        /*Mat edges = new Mat(mRgba.size(), CvType.CV_8UC1);
-        Imgproc.cvtColor(mRgba,edges,Imgproc.COLOR_RGB2GRAY, 4);
-        Imgproc.Canny(edges,edges,80,100);
-        Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_GRAY2RGB);
-
-       /* Mat colorEdges = new Mat();
-        Mat killMe = colorEdges;
-        rgbaInnerWindow.copyTo(colorEdges);
-
-        Imgproc.cvtColor(colorEdges, colorEdges, Imgproc.COLOR_GRAY2BGRA);
-    */
-        //colorEdges = colorEdges.setTo(greenScalar, rgbaInnerWindow);
-        //colorEdges.copyTo(rgbaInnerWindow, rgbaInnerWindow);
-
-        /*killMe.release();
-        colorEdges.release();
-        rgbaInnerWindow.release();
-       // detectEdges(mRgba);
-       */
         return mRgba;
     }
-
-
-    /*private void detectEdges(Mat mRgba) {
-        Mat edges = new Mat(mRgba.size(), CvType.CV_8UC1);
-        Imgproc.cvtColor(mRgba,edges,Imgproc.COLOR_RGB2GRAY, 4);
-        Imgproc.Canny(edges,edges,80,100);
-    }
-    */
-
-
 }
